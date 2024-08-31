@@ -1,6 +1,10 @@
+// src/components/Quiz.tsx
+
 import React, { useState, useEffect, useCallback } from "react";
 import { AlertCircle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { antiCheatingMechanism } from './antiCheating';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface QuizQuestion {
   question: string;
@@ -21,8 +25,9 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
   const [quizComplete, setQuizComplete] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState(600); // 10 minutes in seconds
   const [quizStartTime, setQuizStartTime] = useState<number | null>(null);
-  const [suspiciousActivity, setSuspiciousActivity] = useState(0);
   const [showCopyWarning, setShowCopyWarning] = useState(false);
+  const [showInstructions, setShowInstructions] = useState(true);
+  const [questionStartTimes, setQuestionStartTimes] = useState<number[]>([]);
 
   const shuffleQuestions = useCallback(() => {
     return [...questions]
@@ -36,39 +41,29 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
   useEffect(() => {
     const shuffled = shuffleQuestions();
     setShuffledQuestions(shuffled);
-    setQuizStartTime(Date.now());
   }, [shuffleQuestions]);
 
   useEffect(() => {
-    if (timeRemaining > 0 && !quizComplete) {
+    if (!showInstructions && !quizComplete) {
+      antiCheatingMechanism.activate();
+      setQuizStartTime(Date.now());
+      setQuestionStartTimes([Date.now()]);
+    }
+    return () => {
+      if (!showInstructions && !quizComplete) {
+        antiCheatingMechanism.deactivate();
+      }
+    };
+  }, [showInstructions, quizComplete]);
+
+  useEffect(() => {
+    if (timeRemaining > 0 && !quizComplete && !showInstructions) {
       const timer = setTimeout(() => setTimeRemaining(timeRemaining - 1), 1000);
       return () => clearTimeout(timer);
     } else if (timeRemaining === 0 && !quizComplete) {
-      calculateScore();
-      setQuizComplete(true);
+      handleSubmit();
     }
-  }, [timeRemaining, quizComplete]);
-
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        setSuspiciousActivity(prev => prev + 1);
-      }
-    };
-
-    const handleCopy = (e: ClipboardEvent) => {
-      e.preventDefault();
-      setShowCopyWarning(true);
-      setTimeout(() => setShowCopyWarning(false), 3000);
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    document.addEventListener("copy", handleCopy);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      document.removeEventListener("copy", handleCopy);
-    };
-  }, []);
+  }, [timeRemaining, quizComplete, showInstructions]);
 
   const handleOptionClick = (option: string) => {
     setSelectedAnswers(prev => ({
@@ -80,9 +75,9 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
   const handleNext = () => {
     if (currentQuestionIndex < shuffledQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setQuestionStartTimes(prev => [...prev, Date.now()]);
     } else {
-      calculateScore();
-      setQuizComplete(true);
+      handleSubmit();
     }
   };
 
@@ -94,6 +89,12 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
 
   const jumpToQuestion = (index: number) => {
     setCurrentQuestionIndex(index);
+  };
+
+  const handleSubmit = () => {
+    calculateScore();
+    setQuizComplete(true);
+    antiCheatingMechanism.deactivate();
   };
 
   const calculateScore = () => {
@@ -114,8 +115,10 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
     setScore(0);
     setQuizComplete(false);
     setTimeRemaining(600);
-    setQuizStartTime(Date.now());
-    setSuspiciousActivity(0);
+    setQuizStartTime(null);
+    setShowInstructions(true);
+    antiCheatingMechanism.clearCheatAttempts();
+    setQuestionStartTimes([]);
   };
 
   const formatTime = (seconds: number) => {
@@ -129,6 +132,41 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
     const timeTaken = Math.floor(((endTime - (quizStartTime || 0)) / 1000)); // in seconds
     return formatTime(timeTaken);
   };
+
+  const getTimePerQuestion = () => {
+    const endTimes = [...questionStartTimes.slice(1), Date.now()];
+    return shuffledQuestions.map((_, index) => ({
+      question: `Q${index + 1}`,
+      time: Math.round((endTimes[index] - questionStartTimes[index]) / 1000)
+    }));
+  };
+
+  if (showInstructions) {
+    return (
+      <div className="p-6 max-w-full mx-auto mt-10 border border-gray-200 rounded-lg shadow-md">
+        <h2 className="text-2xl font-bold mb-4">Quiz Instructions</h2>
+        <ul className="list-disc pl-5 mb-4">
+          <li>You have 10 minutes to complete the quiz.</li>
+          <li>There are {shuffledQuestions.length} questions in total.</li>
+          <li>You can navigate between questions using the Previous and Next buttons.</li>
+          <li>The quiz will be in fullscreen mode. Do not exit fullscreen or switch tabs.</li>
+          <li>Copying content or using keyboard shortcuts is not allowed.</li>
+          <li>Any suspicious activity will be logged and may result in disqualification.</li>
+        </ul>
+        <button
+          onClick={() => {
+            setShowInstructions(false);
+            if (document.documentElement.requestFullscreen) {
+              document.documentElement.requestFullscreen();
+            }
+          }}
+          className="bg-blue-500 text-white py-2 px-4 rounded hover:bg-blue-600"
+        >
+          Start Quiz
+        </button>
+      </div>
+    );
+  }
 
   if (shuffledQuestions.length === 0) {
     return <div>Loading...</div>;
@@ -160,14 +198,25 @@ const Quiz: React.FC<QuizProps> = ({ questions }) => {
               Your score is {score}/{shuffledQuestions.length} ({((score / shuffledQuestions.length) * 100).toFixed(2)}% accuracy)
               <br />
               Time taken: {calculateTimeTaken()}
-              {suspiciousActivity > 0 && (
+              {antiCheatingMechanism.getCheatAttempts().length > 0 && (
                 <p className="text-red-500 mt-2">
                   <AlertCircle className="inline mr-2" size={18} />
-                  Suspicious activity detected: switched tabs {suspiciousActivity} times
+                  Suspicious activity detected: {antiCheatingMechanism.getCheatAttempts().length} attempts
                 </p>
               )}
             </AlertDescription>
           </Alert>
+          <div className="mt-6 h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={getTimePerQuestion()}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="question" />
+                <YAxis label={{ value: 'Time (seconds)', angle: -90, position: 'insideLeft' }} />
+                <Tooltip />
+                <Line type="monotone" dataKey="time" stroke="#8884d8" />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
           <button
             onClick={resetQuiz}
             className="bg-blue-500 text-white py-2 px-4 rounded mt-4 hover:bg-blue-600"
