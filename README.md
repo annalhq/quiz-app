@@ -1,3 +1,6 @@
+# Quiz app in ViteJs + TS
+
+
 <h3 align="center">Quiz app built with Vite</h3>
 
 <div align="center">
@@ -26,3 +29,4 @@ A Modern Quiz App Built with Vite, TailwindCSS, Shadcn, and Recharts
 - [x] Question and Answer Randomization: Both questions and answers are randomized to ensure each quiz attempt is unique and challenging.
 
 - [x] Time Tracking: Track the total time taken to complete the quiz and view it in your results. Analyze your performance and improve over time.
+
