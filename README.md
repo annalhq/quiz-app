@@ -1,6 +1,3 @@
-# Quiz app in ViteJs + TS
-
-
 <h3 align="center">Quiz app built with Vite</h3>
 
 <div align="center">
