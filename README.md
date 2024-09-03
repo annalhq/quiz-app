@@ -1,4 +1,4 @@
-<h3 align="center">Quiz app built with Vite</h3>
+<h3 align="center">Quiz app built with Vite JS</h3>
 
 <div align="center">
   <img src="https://img.shields.io/badge/-Vite_JS-black?style=for-the-badge&logoColor=white&logo=vite&color=646CFF" alt="vite" />
